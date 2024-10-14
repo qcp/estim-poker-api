@@ -1,86 +1,36 @@
-import { object, optional, parse, string } from "@valibot/valibot";
-import manager from './manager.ts';
+import { ValiError } from "@valibot/valibot";
+import { getRoom, postRoom } from "./room.ts";
+import { corsHeaders } from "./constants.ts";
 
-function wsRoom(roomId: string, socket: WebSocket) {
-  const userId = crypto.randomUUID()
-  socket.addEventListener("open", () => {
-    const room = manager.init(roomId)
-    room.enter(userId, (state) => {
-      socket.send(JSON.stringify(state))
-    })
-  });
-  socket.addEventListener("close", () => {
-    const room = manager.get(roomId)
-    room.leave(userId)
-  });
-  socket.addEventListener("error", () => {
-    const room = manager.get(roomId)
-    room.leave(userId)
-  });
-  socket.addEventListener("message", (event) => {
-    const room = manager.get(roomId)
-    if (event.data === "ping") {
-      socket.send("pong");
-      room.ping(userId)
-      return;
-    }
-
-    const user = parse(
-      object({ name: string(), vote: optional(string()) }),
-      JSON.parse(event.data)
-    )
-    room.sunc(userId, user)
-  });
-}
-
-async function postRoom(req: Request) {
-  const { id, name, voteSystem } = parse(
-    object({ id: optional(string()), name: string(), voteSystem: string() }),
-    await req.json()
-  )
-
-  if (id) {
-    const room = manager.init(id)
-    room.update({ name, voteSystem })
-    return room.get()
-  }
-  else {
-    const room = manager.create(name, voteSystem)
-    return room.get()
-  }
-}
-
-Deno.serve(async (req) => {
+async function handleRequest(req: Request): Promise<Response> {
   switch (req.method) {
     case "OPTIONS":
-      return new Response(null, {
-        status: 200,
-        headers: {
-          "Access-Control-Allow-Origin": "*",
-          "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-          "Access-Control-Allow-Headers": "Content-Type",
-        }
-      })
-    case "GET": {
-      if (req.headers.get("upgrade") != "websocket") {
-        return new Response(null, { status: 501 });
-      }
-      const { socket, response } = Deno.upgradeWebSocket(req);
-      const roomId = new URL(req.url).pathname.replace(/^\//, '')
-      wsRoom(roomId, socket)
-      return response
-    }
+      return new Response(null, { status: 200, headers: corsHeaders })
+    case "GET":
+      return await getRoom(req)
     case "POST":
-      return new Response(JSON.stringify(await postRoom(req)), {
-        status: 200,
-        headers: {
-          'Content-Type': 'application/json; charset=UTF-8',
-          "Access-Control-Allow-Origin": "*",
-          "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-          "Access-Control-Allow-Headers": "Content-Type",
-        }
-      })
+      return await postRoom(req)
     default:
       return new Response(null, { status: 501 })
   }
-});
+}
+
+function handleError(ex: unknown) {
+  if (ex instanceof ValiError) {
+    return new Response(JSON.stringify(ex.issues), {
+      status: 400,
+      headers: {
+        'Content-Type': 'application/json; charset=UTF-8',
+        ...corsHeaders
+      }
+    })
+  }
+  else if (ex instanceof Error) {
+    return new Response(ex.message, { status: 500, headers: corsHeaders })
+  }
+  else {
+    return new Response(String(ex), { status: 500, headers: corsHeaders })
+  }
+}
+
+Deno.serve((req) => handleRequest(req).catch(handleError));

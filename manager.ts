@@ -1,4 +1,4 @@
-
+import { object, parse, string } from "@valibot/valibot";
 
 type IUserId = string
 type IUser = {
@@ -19,6 +19,7 @@ type IRoomExt = IRoom & {
   users: Array<IUser>
 }
 
+const store = await Deno.openKv();
 class Manager {
   // store = useStorage<IRoom>('room');
   private manager = new Map<IRoomId, Room>()
@@ -26,8 +27,11 @@ class Manager {
   private register(room: Room) {
     // Подпишимся на событие, чтобы синхронизировать стор
     room.enter('root-store', (state) => {
-      console.warn('Save to store')
-      // this.store.setItem(room.id, { id: state.id, name: state.name, voteSystem: state.voteSystem })
+      store.set(['room', state.id], {
+        id: state.id,
+        name: state.name,
+        voteSystem: state.voteSystem
+      })
     })
 
     // Зарегистрирум в менеджере
@@ -36,21 +40,24 @@ class Manager {
     return room
   }
 
-  init(roomId: IRoomId) {
+  async init(roomId: IRoomId) {
     // Проверим что комната уже инициализированна (после создания или первого входа)
     const roomFromManager = this.manager.get(roomId) // не используем this.get т.к. он в случае отсутствия срыгнёт ошибку
     if (roomFromManager)
       return roomFromManager
 
     // Если комната не инициализированна, проверим её наличие в сторе
-    // const roomFromStore = await this.store.getItem(roomId)
-    // if (!roomFromStore)
+    const roomFromStore = await store.get(['room', roomId])
+    if (!roomFromStore)
     throw new Error(`Room "${roomId}" doesn't exist`)
 
-    // const { id, name, voteSystem } = roomFromStore
-    // const room = new Room(id, name, voteSystem)
+    const { id, name, voteSystem } = parse(
+      object({id: string(), name: string(), voteSystem: string()}), 
+      roomFromStore
+    )
+    const room = new Room(id, name, voteSystem)
 
-    // return this.register(room)
+    return this.register(room)
   }
 
   create(name: string, voteSystem: string) {
