@@ -21,13 +21,15 @@ async function wsRoom(roomId: string, socket: WebSocket) {
     if (event.data === "ping") {
       socket.send("pong");
       room.ping(userId)
-      return;
+    } else if (event.data === 'toggle-results') {
+      room.toggleResults()
+    } else {
+      const user = parse(
+        object({ name: string(), vote: optional(string()) }),
+        JSON.parse(event.data)
+      )
+      room.sunc(userId, user)
     }
-    const user = parse(
-      object({ name: string(), vote: optional(string()) }),
-      JSON.parse(event.data)
-    )
-    room.sunc(userId, user)
   });
 }
 
@@ -39,7 +41,7 @@ export async function getRoom(req: Request): Promise<Response> {
 
   const roomId = new URL(req.url).pathname.replace(/^\//, '')
   await wsRoom(roomId, socket)
-  
+
   return response
 }
 

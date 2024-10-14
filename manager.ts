@@ -25,15 +25,6 @@ class Manager {
   private manager = new Map<IRoomId, Room>()
 
   private register(room: Room) {
-    // Подпишимся на событие, чтобы синхронизировать стор
-    room.enter('root-store', (state) => {
-      store.set(['room', state.id], {
-        id: state.id,
-        name: state.name,
-        voteSystem: state.voteSystem
-      })
-    })
-
     // Зарегистрирум в менеджере
     this.manager.set(room.id, room)
 
@@ -49,10 +40,10 @@ class Manager {
     // Если комната не инициализированна, проверим её наличие в сторе
     const roomFromStore = await store.get(['room', roomId])
     if (!roomFromStore)
-    throw new Error(`Room "${roomId}" doesn't exist`)
+      throw new Error(`Room "${roomId}" doesn't exist`)
 
     const { id, name, voteSystem } = parse(
-      object({id: string(), name: string(), voteSystem: string()}), 
+      object({ id: string(), name: string(), voteSystem: string() }),
       roomFromStore
     )
     const room = new Room(id, name, voteSystem)
@@ -63,6 +54,8 @@ class Manager {
   create(name: string, voteSystem: string) {
     const id = crypto.randomUUID()
     const room = new Room(id, name, voteSystem)
+
+    store.set(['room', id], { id, name, voteSystem })
 
     return this.register(room)
   }
@@ -105,8 +98,10 @@ class Room {
     }
   }
   update(room: Pick<IRoom, 'name' | 'voteSystem'>) {
+    const { name, voteSystem } = room
     this.name = room.name
     this.voteSystem = room.voteSystem
+    store.set(['room', this.id], { id: this.id, name, voteSystem })
     this.emitUpdate()
   }
   sunc(userId: IUserId, user: Pick<IUser, 'name' | 'vote'>) {
@@ -115,6 +110,10 @@ class Room {
       id: userId,
       lastSeenAt: new Date()
     })
+    this.emitUpdate()
+  }
+  toggleResults() {
+    this.showResults = !this.showResults
     this.emitUpdate()
   }
   ping(userId: IUserId) {
