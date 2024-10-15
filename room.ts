@@ -1,4 +1,4 @@
-import { object, optional, parse, string } from "@valibot/valibot";
+import { literal, object, optional, parse, safeParse, string, variant } from "@valibot/valibot";
 import manager from './manager.ts';
 import { corsHeaders } from "./constants.ts";
 
@@ -7,9 +7,11 @@ async function wsRoom(roomId: string, socket: WebSocket) {
   const userId = crypto.randomUUID()
 
   socket.addEventListener("open", () => {
-    room.enter(userId, (state) => {
-      socket.send(JSON.stringify(state))
-    })
+    room.enter(userId, (state) => socket.send(JSON.stringify(state)))
+    socket.send(JSON.stringify({
+      ...room.get(),
+      userId // добавим информацию о этом пользователе
+    }))
   });
   socket.addEventListener("close", () => {
     room.leave(userId)
@@ -20,22 +22,33 @@ async function wsRoom(roomId: string, socket: WebSocket) {
   socket.addEventListener("message", (event) => {
     if (event.data === "ping") {
       socket.send("pong");
-      room.ping(userId)
-    } else if (event.data === 'toggle-results') {
+      room.sunc(userId, {}, true)
+    }
+    const action = parse(
+      variant('type', [
+        object({ type: literal('toggle-results') }),
+        object({ type: literal('reset-results') }),
+        object({ type: literal('change-name'), name: string() }),
+        object({ type: literal('change-vote'), vote: optional(string()) }),
+      ]),
+      JSON.parse(event.data)
+    )
+
+    if (action.type === 'toggle-results') {
       room.toggleResults()
-    } else {
-      const user = parse(
-        object({ name: string(), vote: optional(string()) }),
-        JSON.parse(event.data)
-      )
-      room.sunc(userId, user)
+    } else if (action.type === 'reset-results') {
+      room.resetResults()
+    } else if (action.type === 'change-name') {
+      room.sunc(userId, { name: action.name })
+    } else if (action.type === 'change-vote') {
+      room.sunc(userId, { vote: action.vote })
     }
   });
 }
 
 export async function getRoom(req: Request): Promise<Response> {
   if (req.headers.get("upgrade") != "websocket") {
-    return new Response(null, { status: 501 });
+    return Response.redirect('https://qcp.github.io/estim-poker', 301)
   }
   const { socket, response } = Deno.upgradeWebSocket(req);
 

@@ -104,26 +104,26 @@ class Room {
     store.set(['room', this.id], { id: this.id, name, voteSystem })
     this.emitUpdate()
   }
-  sunc(userId: IUserId, user: Pick<IUser, 'name' | 'vote'>) {
+  sunc(userId: IUserId, params: Partial<Pick<IUser, 'name' | 'vote'>>, silent = false) {
+    const user = this.users.get(userId)
+    if (!user) return
     this.users.set(userId, {
       ...user,
-      id: userId,
+      ...params,
       lastSeenAt: new Date()
     })
-    this.emitUpdate()
+    if (!silent)
+      this.emitUpdate()
   }
   toggleResults() {
     this.showResults = !this.showResults
     this.emitUpdate()
   }
-  ping(userId: IUserId) {
-    const user = this.users.get(userId)
-    if (!user) return
-    this.users.set(userId, {
-      ...user,
-      id: userId,
-      lastSeenAt: new Date()
-    })
+  resetResults() {
+    for (const user of this.users.values()) {
+      user.vote = undefined
+    }
+    this.emitUpdate()
   }
   enter(userId: IUserId, onUpdate: (room: IRoomExt) => void) {
     this.listeners.set(userId, onUpdate)
