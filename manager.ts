@@ -1,25 +1,6 @@
-import { object, parse, string } from "@valibot/valibot";
+import { getFromStore, setToStore } from "./store.ts";
+import type { IRoomId, IUserId, IUser, IRoomExt, IRoom } from "./types.ts";
 
-type IUserId = string
-type IUser = {
-  id: IUserId,
-  name: string
-  vote?: string
-  lastSeenAt: Date
-}
-
-type IRoomId = string
-type IRoom = {
-  id: IRoomId
-  name: string
-  voteSystem: string
-}
-type IRoomExt = IRoom & {
-  showResults: boolean
-  users: Array<IUser>
-}
-
-const store = await Deno.openKv();
 class Manager {
   // store = useStorage<IRoom>('room');
   private manager = new Map<IRoomId, Room>()
@@ -28,24 +9,22 @@ class Manager {
     // Зарегистрирум в менеджере
     this.manager.set(room.id, room)
 
+    // Сохраним в сторе
+    setToStore(room.get())
+
     return room
   }
 
   async init(roomId: IRoomId) {
-    // Проверим что комната уже инициализированна (после создания или первого входа)
+    // Проверим что комната уже зарегестрированна (после создания или первого входа)
     const roomFromManager = this.manager.get(roomId) // не используем this.get т.к. он в случае отсутствия срыгнёт ошибку
     if (roomFromManager)
       return roomFromManager
 
     // Если комната не инициализированна, проверим её наличие в сторе
-    const roomFromStore = await store.get(['room', roomId])
-    if (!roomFromStore)
-      throw new Error(`Room "${roomId}" doesn't exist`)
+    const roomFromStore = await getFromStore(roomId)
 
-    const { id, name, voteSystem } = parse(
-      object({ id: string(), name: string(), voteSystem: string() }),
-      roomFromStore
-    )
+    const { id, name, voteSystem } = roomFromStore
     const room = new Room(id, name, voteSystem)
 
     return this.register(room)
@@ -55,20 +34,11 @@ class Manager {
     const id = crypto.randomUUID()
     const room = new Room(id, name, voteSystem)
 
-    store.set(['room', id], { id, name, voteSystem })
-
     return this.register(room)
-  }
-
-  get(roomId: IRoomId) {
-    const room = this.manager.get(roomId)
-    if (!room)
-      throw new Error(`Room "${roomId}" doesn't exist`)
-    return room
   }
 }
 
-class Room {
+export class Room {
   id: IRoomId
   name: string
   voteSystem: string
@@ -98,15 +68,13 @@ class Room {
     }
   }
   update(room: Pick<IRoom, 'name' | 'voteSystem'>) {
-    const { name, voteSystem } = room
     this.name = room.name
     this.voteSystem = room.voteSystem
-    store.set(['room', this.id], { id: this.id, name, voteSystem })
+    setToStore(this.get())
     this.emitUpdate()
   }
   sunc(userId: IUserId, params: Partial<Pick<IUser, 'name' | 'vote'>>, silent = false) {
-    const user = this.users.get(userId)
-    if (!user) return
+    const user = this.users.get(userId) ?? { id: userId, name: '🤡' }
     this.users.set(userId, {
       ...user,
       ...params,

@@ -1,17 +1,12 @@
-import { literal, object, optional, parse, safeParse, string, variant } from "@valibot/valibot";
-import manager from './manager.ts';
-import { corsHeaders } from "./constants.ts";
+import { literal, object, optional, safeParse, string, variant } from "@valibot/valibot";
+import { Room } from './manager.ts';
 
-async function wsRoom(roomId: string, socket: WebSocket) {
-  const room = await manager.init(roomId)
+export function createWsRoom(room: Room, socket: WebSocket) {
   const userId = crypto.randomUUID()
 
   socket.addEventListener("open", () => {
     room.enter(userId, (state) => socket.send(JSON.stringify(state)))
-    socket.send(JSON.stringify({
-      ...room.get(),
-      userId // добавим информацию о этом пользователе
-    }))
+    socket.send(JSON.stringify(room.get()))
   });
   socket.addEventListener("close", () => {
     room.leave(userId)
@@ -23,8 +18,9 @@ async function wsRoom(roomId: string, socket: WebSocket) {
     if (event.data === "ping") {
       socket.send("pong");
       room.sunc(userId, {}, true)
+      return
     }
-    const action = parse(
+    const validatedAction = safeParse(
       variant('type', [
         object({ type: literal('toggle-results') }),
         object({ type: literal('reset-results') }),
@@ -33,6 +29,12 @@ async function wsRoom(roomId: string, socket: WebSocket) {
       ]),
       JSON.parse(event.data)
     )
+    if (!validatedAction.success) {
+      console.warn('Broken ws payload', event.data)
+      return
+    }
+
+    const action = validatedAction.output
 
     if (action.type === 'toggle-results') {
       room.toggleResults()
@@ -44,43 +46,5 @@ async function wsRoom(roomId: string, socket: WebSocket) {
       room.sunc(userId, { vote: action.vote })
     }
   });
-}
 
-export async function getRoom(req: Request): Promise<Response> {
-  if (req.headers.get("upgrade") != "websocket") {
-    return Response.redirect('https://qcp.github.io/estim-poker', 301)
-  }
-  const { socket, response } = Deno.upgradeWebSocket(req);
-
-  const roomId = new URL(req.url).pathname.replace(/^\//, '')
-  await wsRoom(roomId, socket)
-
-  return response
-}
-
-export async function postRoom(req: Request): Promise<Response> {
-  const { id, name, voteSystem } = parse(
-    object({ id: optional(string()), name: string(), voteSystem: string() }),
-    await req.json()
-  )
-
-  let room: ReturnType<typeof manager.get>
-  if (id) {
-    room = await manager.init(id)
-    room.update({ name, voteSystem })
-  }
-  else {
-    room = manager.create(name, voteSystem)
-  }
-
-  return new Response(
-    JSON.stringify(room.get()),
-    {
-      status: 200,
-      headers: {
-        'Content-Type': 'application/json; charset=UTF-8',
-        ...corsHeaders
-      }
-    }
-  )
 }
