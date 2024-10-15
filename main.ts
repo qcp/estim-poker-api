@@ -28,7 +28,7 @@ export function getRoom(req: Request): Response {
   manager.init(roomId)
     .then((room) => createWsRoom(room, socket))
     .catch((ex) => {
-      console.warn(`Couldn't init room ${roomId}`, ex)
+      console.warn(ex)
       // https://github.com/denoland/deno/issues/21642
       socket.close(4400, `Couldn't init room`)
     }) 
@@ -56,7 +56,7 @@ export async function postRoom(req: Request): Promise<Response> {
       room = await manager.init(id)
       room.update({ name, voteSystem })
     } catch (ex) {
-      console.warn(`Couldn't init room ${id}`, ex)
+      console.warn(ex)
       return newResponce(400, {
         message: `Couldn't init room`,
         error: ex
