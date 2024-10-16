@@ -15,28 +15,26 @@ function newResponce(status: number, body: Record<string, unknown>) {
   })
 }
 
-export function getRoom(req: Request): Response {
+async function getRoom(req: Request): Promise<Response> {
   if (req.headers.get("upgrade") != "websocket") {
     return Response.redirect('https://qcp.github.io/estim-poker', 301)
   }
 
-  const { socket, response } = Deno.upgradeWebSocket(req);
-
-  const roomId = new URL(req.url).pathname.replace(/^\//, '')
-
-  // Strictly won't wait, init must perform after returning response
-  manager.init(roomId)
-    .then((room) => createWsRoom(room, socket))
-    .catch((ex) => {
-      console.warn(ex)
-      // https://github.com/denoland/deno/issues/21642
-      socket.close(4400, `Couldn't init room`)
-    }) 
-
-  return response
+  try {
+    const roomId = new URL(req.url).pathname.replace(/^\//, '')
+    const room = await manager.init(roomId)
+    const { socket, response } = Deno.upgradeWebSocket(req);
+    createWsRoom(room, socket)
+    return response
+  } catch (ex) {
+    return newResponce(400, {
+      message: `Couldn't init room`,
+      error: ex
+    })
+  }
 }
 
-export async function postRoom(req: Request): Promise<Response> {
+async function postRoom(req: Request): Promise<Response> {
   const validatedBody = safeParse(
     object({ id: optional(string()), name: string(), voteSystem: string() }),
     await req.json()
@@ -75,7 +73,7 @@ async function handleRequest(req: Request): Promise<Response> {
     case "OPTIONS":
       return new Response(null, { status: 200, headers: corsHeaders })
     case "GET":
-      return getRoom(req)
+      return await getRoom(req)
     case "POST":
       return await postRoom(req)
     default:
