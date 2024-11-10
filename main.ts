@@ -1,83 +1,71 @@
-
 import { flatten, object, optional, safeParse, string } from "@valibot/valibot";
 import { corsHeaders } from "./constants.ts";
-import type { Room } from "./manager.ts";
-import manager from "./manager.ts";
 import { createWsRoom } from "./room.ts";
+import { createRoom, getFullRoom, isRoomExist, updateRoom } from "./store.ts";
 
 function newResponce(status: number, body: Record<string, unknown>) {
   return new Response(JSON.stringify(body), {
     status: status,
     headers: {
-      'Content-Type': 'application/json; charset=UTF-8',
-      ...corsHeaders
-    }
-  })
+      "Content-Type": "application/json; charset=UTF-8",
+      ...corsHeaders,
+    },
+  });
 }
 
 async function getRoom(req: Request): Promise<Response> {
   if (req.headers.get("upgrade") != "websocket") {
-    return Response.redirect('https://qcp.github.io/estim-poker', 301)
+    return Response.redirect("https://qcp.github.io/estim-poker", 301);
   }
 
-  try {
-    const roomId = new URL(req.url).pathname.replace(/^\//, '')
-    const room = await manager.init(roomId)
+  const roomId = new URL(req.url).pathname.replace(/^\//, "");
+  const isExist = await isRoomExist(roomId);
+
+  if (isExist) {
     const { socket, response } = Deno.upgradeWebSocket(req);
-    createWsRoom(room, socket)
-    return response
-  } catch (ex) {
+    createWsRoom(roomId, socket);
+    return response;
+  } else {
     return newResponce(400, {
       message: `Couldn't init room`,
-      error: ex
-    })
+    });
   }
 }
 
 async function postRoom(req: Request): Promise<Response> {
   const validatedBody = safeParse(
     object({ id: optional(string()), name: string(), voteSystem: string() }),
-    await req.json()
-  )
+    await req.json(),
+  );
 
   if (!validatedBody.success) {
     return newResponce(400, {
       message: `Couldn't parse body params`,
-      issues: flatten(validatedBody.issues)
-    })
+      issues: flatten(validatedBody.issues),
+    });
   }
 
-  const { id, name, voteSystem } = validatedBody.output
-  let room: Room
-  if (id) {
-    try {
-      room = await manager.init(id)
-      room.update({ name, voteSystem })
-    } catch (ex) {
-      console.warn(ex)
-      return newResponce(400, {
-        message: `Couldn't init room`,
-        error: ex
-      })
-    }
-  }
-  else {
-    room = manager.create(name, voteSystem)
-  }
+  const { id, name, voteSystem } = validatedBody.output;
 
-  return newResponce(200, room.get())
+  const roomId = id
+    ? await updateRoom(id, (room) => ({ ...room, name, voteSystem }))
+    : await createRoom(name, voteSystem);
+
+  const room = await getFullRoom(roomId);
+
+  return newResponce(200, room);
 }
 
 async function handleRequest(req: Request): Promise<Response> {
   switch (req.method) {
     case "OPTIONS":
-      return new Response(null, { status: 200, headers: corsHeaders })
+      return new Response(null, { status: 200, headers: corsHeaders });
     case "GET":
-      return await getRoom(req)
+      return await getRoom(req);
     case "POST":
-      return await postRoom(req)
+      return await postRoom(req);
     default:
-      return new Response(null, { status: 501, headers: corsHeaders })
+      return new Response(null, { status: 501, headers: corsHeaders });
   }
 }
 
