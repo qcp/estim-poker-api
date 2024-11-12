@@ -2,6 +2,7 @@
   "version": "4",
   "specifiers": {
     "jsr:@std/assert@1": "1.0.6",
+    "jsr:@std/async@^1.0.8": "1.0.8",
     "jsr:@std/internal@^1.0.4": "1.0.4",
     "jsr:@valibot/valibot@~0.42.1": "0.42.1"
   },
@@ -11,6 +12,9 @@
       "dependencies": [
         "jsr:@std/internal"
       ]
+    },
+    "@std/async@1.0.8": {
+      "integrity": "c057c5211a0f1d12e7dcd111ab430091301b8d64b4250052a79d277383bc3ba7"
     },
     "@std/internal@1.0.4": {
       "integrity": "62e8e4911527e5e4f307741a795c0b0a9e6958d0b3790716ae71ce085f755422"
@@ -22,6 +26,7 @@
   "workspace": {
     "dependencies": [
       "jsr:@std/assert@1",
+      "jsr:@std/async@^1.0.8",
       "jsr:@valibot/valibot@~0.42.1"
     ]
   }

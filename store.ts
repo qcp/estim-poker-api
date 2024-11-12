@@ -70,7 +70,7 @@ const UserScheme = object({
   vote: optional(string()),
 });
 
-const userExpiration = { expireIn: 60 * 1000 };
+const userExpiration = { expireIn: 2 * 60 * 1000 };
 
 export async function syncRoomUser(
   roomId: IRoomId,
@@ -85,6 +85,19 @@ export async function syncRoomUser(
   await store.set(key, updater(user), userExpiration);
 
   await updateRefreshFlag(roomId);
+}
+
+export async function pingRoomUser(
+  roomId: IRoomId,
+  userId: IUserId,
+) {
+  const key = ["room_v2", roomId, "user", userId];
+  const item = await store.get(key);
+
+  if (item.value)
+    await store.set(key, item.value, userExpiration);
+
+  return !!item.value
 }
 
 export async function killRoomUser(roomId: IRoomId, userId: IUserId) {
